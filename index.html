@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+    .node {
+        stroke: #000;
+        stroke-width: 1.5px;
+    }
+
+    .link {
+        stroke: #999;
+        stroke-opacity: .6;
+    }
+</style>
+
+<body>
+    <form id="locationBar" onsubmit="return handleClick()">
+        <input name="Submit" type="submit" value="root">
+        <p id="coordinatesDisplay">
+
+        </p>
+    </form>
+    <script src="http://d3js.org/d3.v3.min.js"></script>
+    <script src="https://code.jquery.com/jquery-2.2.4.min.js"></script>
+    <script>
+        //init basic variables
+        var size = 500;
+        var height = window.innerHeight;
+        var width = window.innerWidth;
+        var charge = -0.3;
+        var data;
+        var min = 0;
+        var max = 0;
+        var root = "http://192.168.1.2:32400/library/sections"
+        var coordinates = []
+        var previousU;
+        var boundary = 200;
+        var foci = [{x: 150, y: 150}, {x: 350, y: 250}, {x: 700, y: 400}];
+        var pointer;
+        var gravityMin = .06;
+        var gravityMax = .1;
+        var g6 = 0;
+        coordinates[0] = root;
+
+
+
+
+        //handle address bar click
+        function handleClick(event) {
+            nodes.length = 0;
+            coordinates.length = 1;
+            console.log('navigating to ' + coordinates.join(''));
+            goTo(coordinates.join(''));
+            return false;
+        }
+        // init force graph
+        var nodes = [];
+
+
+        var force = d3.layout.force()
+            .size([width, height])
+            .nodes(nodes)
+            .gravity(.09)
+            .charge(-300)
+
+
+        //svg
+        var svg = d3.select('body')
+            .append('svg')
+            .attr({
+                height: height,
+                width: width
+            });
+
+
+        var outerRim = svg
+            .append('circle')
+            .attr('r', boundary)
+            .on('click', zoomOut)
+            .attr('cx', width / 2)
+            .attr('cy', height / 2)
+            .attr('fill', '#fff')
+            .attr('stroke-width', 1)
+            .attr('stroke', 'black');
+
+
+        var node = svg.selectAll('.node');
+
+
+        function getCoordinate(key) {
+            if (previousU == coordinates[coordinates.length - 1]) {
+                coordinates.pop();
+            } else {
+                coordinates.push(key)
+                console.log(coordinates);
+            };
+            return coordinates.join("/");
+        };
+
+
+
+
+        function goTo(address) {
+            // node
+            //   .transition()
+            //   .duration(1000)
+            //   .style("fill", '#fff');
+            nodes.length = 0;
+
+            $.ajaxSetup({
+                headers: {
+                    'Accept': 'application/json'
+                }
+            });
+            $.getJSON(address, data, function(data) {
+                for (child in data._children) {
+                    var obj = data._children[child];
+                    min = Math.min(obj.count, min);
+                    max = Math.max(obj.count, max);
+                    nodes.push(obj);
+                }
+                display(10, 100);
+            });
+        }
+
+        // function nodeCount(address) {
+        //     $.ajaxSetup({
+        //         headers: {
+        //             'Accept': 'application/json'
+        //         }
+        //     });
+        //
+        //     var count = 0;
+        //     $.getJSON(address, data, function(data) {
+        //         for (child in data._children) {
+        //             count = count + 1;
+        //         }
+        //     });
+        //
+        //     return count;
+        // }
+
+        function zoomOut() {
+            console.log('away!');
+            if (coordinates.length > 1) {
+                coordinates.pop();
+            };
+            goTo(coordinates.join('/'));
+        }
+
+
+
+        function clickNodes(data, i) {
+          pointer = [data.x, data.y];
+          console.log(pointer);
+          g6 = Math.random()* (gravityMax - gravityMin) + gravityMin;
+          force.gravity(g6);
+            // nodes.push(savedNode);
+            // previousU = data.key;
+            var a = getCoordinate(data.key);
+            console.log("going to " + a);
+            goTo(a);
+        }
+        var nodeDistanceX = [];
+        var nodeDistanceY = [];
+
+
+        //display function
+        function display(min, boundary) {
+
+          d3.select("#coordinatesDisplay")
+                .text(coordinates.join('/'));
+
+            var scale = d3.scale.linear().domain([min, max]).range([30, 60]);
+            var nodeColors = d3.scale.category20();
+
+            node = node.data(force.nodes(), function(d) {
+                return d.key;
+            })
+
+            //init G
+            var g = node.enter().append('g')
+                .on('click', clickNodes);
+
+
+
+
+            var circles = g
+                .append('circle')
+                .attr("r", 30)
+                .style("fill", function(d) {
+                    var index = nodes.indexOf(d);
+                    return nodeColors(d.type);
+                })
+              ;
+
+            //directory nodes
+            var directory = node.filter(function(d) {
+                return ('_elementType' in d && d['_elementType'] == 'Directory')
+            })
+
+            var folder = directory
+                .append('circle')
+                .attr("r", 5);
+
+            var labels = directory
+                .append('text')
+                .attr('text-anchor', 'middle')
+                .text(function(d) {
+                    return d.title + d.key;
+                });
+
+                //DISPLAY code
+                var posters = node.filter(function(d, i) { return ('type' in d && d['type'] == 'movie'); });
+
+                var circle = posters
+              	  .append("svg:image")
+                  .attr('width', 150)
+                  .attr('height', 100)
+                  .on("click", clickNodes)
+                  .attr('xlink:href', function(d) { return "http://192.168.1.2:32400/photo/:/transcode?width=150&height=100&minSize=1&url=" + encodeURIComponent(d.thumb); });
+                //DISPLAY code
+
+            //display counts
+            // var counted = node.filter(function(d) {
+            //     return ('_elementType' in d && d['_elementType'] == 'Directory')
+            // })
+
+            function stepThrough() {
+                node.attr('transform', function(d) {
+                    return 'translate(' + d.x + ',' + d.y + ')';
+                });
+                //
+                // for (i = 0; i < nodeDistanceX.length; i++) {
+                //     nodeDistanceX[i] = Math.abs(nodeDistanceX - width / 2);
+                //     nodeDistanceY[i] = Math.abs(nodeDistanceY - height / 2);
+                // }
+                // var maxX = Math.max(nodeDistanceX);
+                // var maxY = Math.max(nodeDistanceY);
+                //
+                // boundary = Math.sqrt((maxX * maxX) + (maxY * maxY));
+            };
+
+            force.on('tick', function() {
+                stepThrough();
+            });
+
+            node.exit()
+            .transition()
+            .duration(1000)
+            .each(function() {
+              d3.select(this).transition()
+              .style("opacity", 0)
+              .attr('transform', function() {
+                  return 'translate(' + pointer[0] + ',' + pointer[1] + ')';
+              });
+            })
+            .remove();
+
+
+
+
+            force.start();
+        }
+
+
+        //node variable
+    </script>
+</body>

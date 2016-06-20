@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+    .node {
+        stroke: #000;
+        stroke-width: 1.5px;
+    }
+
+    .link {
+        stroke: #999;
+        stroke-opacity: .6;
+    }
+</style>
+
+<body>
+    <form id="locationBar" onsubmit="return handleClick()">
+        <input name="Submit" type="submit" value="root">
+        <p id="coordinatesDisplay">
+
+        </p>
+    </form>
+    <script src="http://d3js.org/d3.v3.min.js"></script>
+    <script src="https://code.jquery.com/jquery-2.2.4.min.js"></script>
+    <script>
+//to do:
+//zoom
+//filter nodes by d._elementType
+//color nodes by d.tag
+
+
+        var universe;
+        var n = [];
+        var genre = [];
+
+
+
+        function createUniverse(config) {
+          //configure charge size
+            var width = config.width;
+            var height = config.height;
+            var filters = [];
+
+            console.log("chart sizing..." + config.width  + " x " + config.height);
+
+
+            this.addFilter = function(filter){
+              filters.push(filter);
+              console.log(filters);
+            }
+
+            this.filters = function(){
+              return filters;
+            }
+
+            var fs = function(){
+              return filters;
+            }
+
+            this.addNode = function(obj) {
+                nodes.push(obj);
+                update();
+            };
+
+            this.removeAllNodes = function() {
+                nodes.splice(0, nodes.length);
+                update();
+            };
+
+            var findNode = function(id) {
+                for (var i in nodes) {
+                    if (nodes[i]["id"] === id) return nodes[i];
+                };
+            };
+
+            var findNodeIndex = function(id) {
+                for (var i = 0; i < nodes.length; i++) {
+                    if (nodes[i].id == id) {
+                        return i;
+                    }
+                };
+            };
+
+
+          var svg = d3.select('body')
+          .append("svg:svg")
+          .attr("width", width)
+          .attr("height", height)
+          .attr("id", "svg")
+          .append('g')
+          .call(d3.behavior.zoom().scaleExtent([.1,20]).on("zoom",zoom))
+          .append('g')
+          .attr('id', 'portal');
+
+
+
+
+          var force = d3.layout.force();
+
+          var links = force.links();
+
+          var nodes = force.nodes();
+
+
+
+  var update = function () {
+
+
+
+
+          var node = svg.selectAll("g.node")
+                  .data(nodes, function (d) {
+                      return d.key;
+                  });
+
+          var nodeEnter = node.enter().append("g")
+                  .attr("class", "node")
+                  // .call(force.drag)
+                  ;
+
+          nodeEnter.append("svg:circle")
+                  .attr("r", 12)
+                  .attr("id", function (d) {
+                      return "Node;" + d.id;
+                  })
+                  .attr("class", "nodeStrokeClass")
+                  .attr("fill", "#000")
+                    .on("mouseover", mouseOver)
+                    .on("mouseout", mouseOut);
+
+            nodeEnter
+            .append("svg:image")
+            .attr('xlink:href',  getThumb)
+          // nodeEnter.append("svg:text")
+          //         .attr("class", "textClass")
+          //         .attr("x", 14)
+          //         .attr("y", ".31em")
+          //         .text(function (d) {
+          //             return d.title;
+          //         });
+
+
+            node.exit().remove();
+
+            force.on("tick", function () {
+
+                node.attr("transform", function (d) {
+                    return "translate(" + d.x + "," + d.y + ")";
+                });
+
+            });
+
+            // Restart the force layout.
+            force
+                    .gravity(.09)
+                    .charge(-300)
+                    .size([width, height])
+                    .start();
+        };
+
+update();
+
+
+        }
+
+function goTo(obj) {
+            // node
+            //   .transition()
+            //   .duration(1000)
+            //   .style("fill", '#fff');
+            // nodes.length = 0;
+            var filters = [];
+            var o= {};
+            o.width = 800;
+            o.height=800;
+
+            universe = new createUniverse(o);
+
+            $.ajaxSetup({
+                headers: {
+                    'Accept': 'application/json'
+                }
+            });
+
+            $.getJSON("http://192.168.1.2:32400/library/sections/4/all", function(data) {
+                for (child in data._children) {
+                    var obj = data._children[child];
+                    universe.addNode(obj);
+                    n.push(obj);
+                    for (c in obj._children){
+                      var o = obj._children[c];
+                      filters.push(o._elementType);
+                    }
+                }
+
+              var uniqueFilters =  $.unique(filters);
+              for (each in uniqueFilters){
+                universe.addFilter(uniqueFilters[each]);
+              }
+              console.log("filters complete");
+              //print filters
+              var fs = universe.filters();
+              d3.select('body').selectAll('p').data(fs).enter().append('p').text(function(d,i){return fs[i]});
+
+
+
+            });
+
+
+
+            //
+            // var zoom = d3.behavior.zoom().on("zoom", rescale)
+            //
+            // var con = d3.select('#portal')
+            // .call(zoom)
+            // ;
+            //
+            // function rescale() {
+            //
+            // con.attr("transform", "translate(" + d3.event.translate + ")scale(" + d3.event.scale + ")");
+            //
+            //
+            // console.log(d3.event.translate);
+            // console.log(d3.event.scale)
+            // console.log("scallleeee?");
+            //
+            // }
+        }
+
+
+
+function mouseOver(d,i){
+  d3.select(this)
+  .transition()
+   .duration(750)
+   .attr("fill", "lightsteelblue")
+   .attr('r', 60);
+
+
+  console.log("title: " + d.title);
+
+   for(child in d._children){
+     var obj = d._children[child];
+     console.log( obj._elementType + " : " + obj.tag );
+   }
+
+
+
+
+}
+
+function getThumb(d){
+return ("http://192.168.1.2:32400/photo/:/transcode?width=150&height=100&minSize=1&url=" + encodeURIComponent(d.thumb));
+}
+
+
+function mouseOut(d){
+      d3.select(this)
+    .transition()
+     .duration(750)
+     .attr("fill", "#000")
+     .attr("r", 12)
+
+  }
+
+  function zoom() {
+
+   d3.select('#portal').attr("transform", "translate(" + d3.event.translate + ")scale(" + d3.event.scale + ")");
+  // console.log(d3.event.translate);
+  // console.log(d3.event.scale)
+  // console.log("scallleeee?");
+
+  }
+    </script>
+</body>

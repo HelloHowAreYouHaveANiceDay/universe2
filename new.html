@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<script src="http://d3js.org/d3.v3.min.js" charset="utf-8"></script>
+  <script src="https://code.jquery.com/jquery-2.2.4.min.js"></script>
+</head>
+<body>
+
+<script>
+
+var size = 1000;
+var height = 1000;
+var width = 960;
+var charge = -0.3;
+var data;
+var min = 0;
+var max = 0;
+
+// Initialize force graph.
+var nodes = [];
+var force = d3.layout.force()
+  .size([width, height])
+  .nodes(nodes)
+  .charge(-500);
+
+var svg = d3.select('body')
+	.append('svg')
+	.attr({ height: height,	width: width });
+
+var node = svg.selectAll(".node");
+
+$.ajaxSetup({headers : {'Accept' : 'application/json'}});
+$.getJSON('http://192.168.1.2:32400/library/sections/5/mood/top', data, function(data, textStatus) {
+  for (child in data._children)
+  {
+    var obj = data._children[child];
+    min = Math.min(obj.count, min);
+    max = Math.max(obj.count, max);
+    nodes.push(obj);
+  }
+
+  displayGenres(min, max);
+});
+
+function clickOnPoster(data)
+{
+  // Remove all nodes except the clicked one.
+  var index = nodes.indexOf(data);
+  var savedNode = nodes[index];
+  nodes.length = 0;
+  nodes.push(savedNode);
+  displayGenres(100, 100);
+
+ // Go get data.
+ var url = 'http://192.168.1.2:32400';
+ if (data.type == 'artist')
+   url += '/library/metadata/' + data.ratingKey + '?includeRelated=1&excludeFields=summary';
+ else
+   url += data.key + '?includeRelated=1&excludeFields=summary';
+
+ $.getJSON(url, function(data, textStatus) {
+   var related = data._children[0]._children[data._children[0]._children.length-1];
+   if (related._children.length > 0)
+   {
+     for (relatedItem in related._children[0]._children)
+       nodes.push(related._children[0]._children[relatedItem]);
+   }
+
+   displayGenres(100, 100);
+ });
+}
+
+function clickOnGenre(data)
+{
+  // Mark the node as selected.
+  d3.select(this).transition()
+   .duration(750)
+   .style("fill", "lightsteelblue")
+   .attr('r', 40);
+
+   // Remove all nodes except the clicked one.
+   var index = nodes.indexOf(data);
+   var savedNode = nodes[index];
+   nodes.length = 0;
+   nodes.push(savedNode);
+
+  // Go get data.
+  var url = 'http://192.168.1.2:32400' + data.key + '&excludeFields=summary&X-Plex-Container-Start=0&X-Plex-Container-Size=30';
+
+  $.getJSON(url, function(data, textStatus) {
+    for (child in data._children)
+      nodes.push(data._children[child]);
+
+    displayGenres(100, 100);
+  });
+}
+
+function displayGenres(min, max)
+{
+  var scale = d3.scale.linear().domain([min, max]).range([30, 60]);
+  var nodeColors = d3.scale.category20();
+
+  node = node.data(force.nodes(), function(d) { return d.key; });
+  var g = node.enter().append('g');
+
+  // Tags.
+  var tags = node.filter(function(d, i) { return ('tagType' in d); });
+
+  var circle = tags
+  	.append('circle')
+  	.attr('r', function(d) { return scale(d.count);	})
+    .on("click", clickOnGenre)
+  	.style('fill', function(d) { return nodeColors(d.tag) });
+
+  var text = tags
+    .append('text')
+    .attr('text-anchor', 'middle')
+    .attr('font-family', 'Helvetica')
+    .attr('font-weight', 'bold')
+    .attr('pointer-events', 'none')
+    .text(function(d) { return d.tag });
+
+  // Posters.
+  var posters = node.filter(function(d, i) { return ('type' in d && d['type'] == 'movie'); });
+  var circle = posters
+	  .append("svg:image")
+    .attr('width', 150)
+    .attr('height', 100)
+    .on("click", clickOnPoster)
+    .attr('xlink:href', function(d) { return "http://192.168.1.2:32400/photo/:/transcode?width=150&height=100&minSize=1&url=" + encodeURIComponent(d.thumb); });
+
+  // Artists.
+  var artists = node.filter(function(d, i) { return ('type' in d && d['type'] == 'artist'); });
+  var clipPath = artists
+    .append('clipPath')
+      .attr('id', 'circleClip')
+    .append('circle')
+      .attr('r', 40)
+      .attr('cx', 70)
+      .attr('cy', 70);
+
+    var text = artists
+      .append('text')
+      .attr('font-family', 'Helvetica')
+      .attr('font-weight', 'bold')
+      .attr('font-size', '10')
+      .attr('pointer-events', 'none')
+      .text(function(d) { return d.title });
+
+  var circle = artists
+	  .append("svg:image")
+    .attr('width', 130)
+    .attr('height', 130)
+    .attr('clip-path', 'url("#circleClip")')
+    .on("click", clickOnPoster)
+    .attr('xlink:href', function(d) { return "http://192.168.1.2:32400/photo/:/transcode?width=200&height=200&upscale=1&minSize=1&url=" + encodeURIComponent(d.thumb); });
+
+  node.exit().remove();
+
+  force.on('tick', function() {
+    node.attr('transform', function(d) { return 'translate(' + d.x + ',' + d.y + ')'; });
+  });
+
+  force.start();
+}
+
+</script>
+
+</html>
